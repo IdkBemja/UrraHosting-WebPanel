@@ -1,0 +1,228 @@
+name: app-${INSTANCE_ID}
+
+# Architecture (plan.md section 3): the dashboard NEVER gets direct Docker
+# access and never builds/runs the user's application itself. It only
+# talks to the `orchestrator` service over the internal `control` network;
+# the orchestrator is the only component with (scoped) Docker access, and
+# it is the one that fills in the fixed, hardened container spec for the
+# app/database containers (see orchestrator/app.py) rather than trusting
+# anything the dashboard passes through.
+#
+# `app` and `database` are intentionally NOT declared as services below.
+# The orchestrator creates/recreates them directly through its own
+# docker-proxy for every deploy (build -> unrouted health-check candidate
+# -> only then swap traffic - plan.md section 6.4), which a static Compose
+# service recreated in place cannot do without a traffic-serving gap. Their
+# fixed spec (non-root, cap_drop ALL, no-new-privileges, read_only,
+# resource limits, no ports:, no host mounts) lives in orchestrator/app.py
+# instead of here. See dockerhost-fixes.md for what the host/Traefik setup
+# needs to look like for this to work end to end.
+x-instance-env: &instance-env
+  INSTANCE_ID: ${INSTANCE_ID}
+  DATA_DIR: ${DATA_DIR}
+  DASHBOARD_PORT: ${DASHBOARD_PORT}
+  APP_PORT: ${APP_PORT}
+  PUBLIC_BASE_DOMAIN: ${PUBLIC_BASE_DOMAIN:-}
+  PUBLIC_SERVER_ADDRESS: ${PUBLIC_SERVER_ADDRESS:-}
+  TRAEFIK_PUBLIC_NETWORK: ${TRAEFIK_PUBLIC_NETWORK}
+  TRAEFIK_WEB_ENTRYPOINT: ${TRAEFIK_WEB_ENTRYPOINT}
+  TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-1}
+  APP_USER: ${APP_USER}
+  APP_PASSWORD: ${APP_PASSWORD}
+  APP_SECRET: ${APP_SECRET}
+  SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE}
+  DEBUG: ${DEBUG}
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB}
+  APP_CPU_LIMIT: ${APP_CPU_LIMIT}
+  APP_CPU_RESERVATION: ${APP_CPU_RESERVATION}
+  APP_MEMORY_LIMIT: ${APP_MEMORY_LIMIT}
+  APP_MEMORY_RESERVATION: ${APP_MEMORY_RESERVATION}
+  APP_STORAGE_LIMIT_GB: ${APP_STORAGE_LIMIT_GB}
+  DASHBOARD_CPU_LIMIT: ${DASHBOARD_CPU_LIMIT}
+  DASHBOARD_MEMORY_LIMIT: ${DASHBOARD_MEMORY_LIMIT}
+  ALLOWED_GIT_HOSTS: ${ALLOWED_GIT_HOSTS:-}
+  ALLOWED_DB_ENGINES: ${ALLOWED_DB_ENGINES:-}
+  MYSQL_IMAGE: ${MYSQL_IMAGE:-}
+  POSTGRES_IMAGE: ${POSTGRES_IMAGE:-}
+
+x-container-hardening: &container-hardening
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+
+services:
+  # Minimal Docker API surface for the DASHBOARD: container lifecycle
+  # (start/stop/restart) and read-only status/logs for its own instance's
+  # `app` container only (checked against the com.urrahosting.instance
+  # label in docker_client.py). No build, no image management, no exec,
+  # no networks/volumes control.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: ${INSTANCE_ID}_docker_proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      INFO: 1
+      POST: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      ALLOW_RESTARTS: 1
+      EXEC: 0
+      IMAGES: 0
+      NETWORKS: 0
+      VOLUMES: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      NODES: 0
+      PLUGINS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      AUTH: 0
+      SECRETS: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - control
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+    labels:
+      com.urrahosting.instance: ${INSTANCE_ID}
+      com.urrahosting.role: docker-proxy-dashboard
+
+  # Broader (but still bounded) Docker API surface for the ORCHESTRATOR
+  # only: build, container/image lifecycle, network connect, volumes (for
+  # the database's named volume). Still no exec, no secrets, no swarm/node
+  # admin, no auth/system endpoints.
+  docker-proxy-orchestrator:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: ${INSTANCE_ID}_docker_proxy_orchestrator
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      INFO: 1
+      POST: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      ALLOW_RESTARTS: 1
+      BUILD: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      EXEC: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      NODES: 0
+      PLUGINS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      AUTH: 0
+      SECRETS: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - control
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+    labels:
+      com.urrahosting.instance: ${INSTANCE_ID}
+      com.urrahosting.role: docker-proxy-orchestrator
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    container_name: ${INSTANCE_ID}_orchestrator
+    restart: unless-stopped
+    environment:
+      <<: *instance-env
+      DOCKER_HOST: tcp://docker-proxy-orchestrator:2375
+      SOURCE_DIR: /source
+      DATA_DIR_HOST_ABS: ${DATA_DIR_HOST_ABS}
+      RUNTIME_NETWORK_NAME: ${INSTANCE_ID}_runtime
+      ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN}
+    volumes:
+      - ${DATA_DIR}/source:/source:ro
+    depends_on:
+      - docker-proxy-orchestrator
+    networks:
+      - control
+      - runtime
+    <<: *container-hardening
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    labels:
+      com.urrahosting.instance: ${INSTANCE_ID}
+      com.urrahosting.role: orchestrator
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: ${INSTANCE_ID}_dashboard
+    restart: unless-stopped
+    environment:
+      <<: *instance-env
+      DOCKER_HOST: tcp://docker-proxy:2375
+      ORCHESTRATOR_URL: http://orchestrator:9000
+      ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN}
+    volumes:
+      - ${DATA_DIR}/state:/data/state
+      - ${DATA_DIR}/secrets:/data/secrets
+      - ${DATA_DIR}/backups:/data/backups
+      - ${DATA_DIR}/source:/data/source
+      - ${DATA_DIR}/staging:/data/staging
+      - ${DATA_DIR}/panel:/data/panel
+    depends_on:
+      - docker-proxy
+      - orchestrator
+    networks:
+      - control
+      - traefik-public
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          cpus: "${DASHBOARD_CPU_LIMIT}"
+          memory: ${DASHBOARD_MEMORY_LIMIT}
+    labels:
+      com.urrahosting.instance: ${INSTANCE_ID}
+      com.urrahosting.role: dashboard
+
+networks:
+  control:
+    name: ${INSTANCE_ID}_control
+    internal: true
+    labels:
+      com.urrahosting.instance: ${INSTANCE_ID}
+  runtime:
+    name: ${INSTANCE_ID}_runtime
+    internal: true
+    labels:
+      com.urrahosting.instance: ${INSTANCE_ID}
+  traefik-public:
+    name: ${TRAEFIK_PUBLIC_NETWORK}
+    external: true

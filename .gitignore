@@ -1,0 +1,22 @@
+# Documentos operativos/internos - no se versionan
+plan.md
+dockerhost-fixes.md
+
+# Secretos y datos por instancia
+.env
+.env.local
+instances/
+data/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Editor/OS
+.claude/
+.vscode/
+.DS_Store
+Thumbs.db

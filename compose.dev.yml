@@ -1,0 +1,41 @@
+# Uso: docker compose -f compose.yml -f compose.dev.yml up -d
+#
+# Overlay SOLO para desarrollo local. No modifica compose.yml ni
+# compose.traefik.yml - se combina con el primero (nunca junto con el de
+# Traefik: son dos formas alternativas de exponer el dashboard).
+#
+# Que resuelve:
+#   1. compose.yml conecta el dashboard a la red externa `traefik-public`
+#      (para que Traefik la encuentre en produccion). Sin Traefik corriendo
+#      localmente, `docker compose up` fallaria porque esa red externa no
+#      existe. Este overlay la redefine como una red local que Compose crea
+#      solo, sin tocar la definicion "external: true" real.
+#   2. Publica el puerto del dashboard en localhost para poder entrar desde
+#      el navegador sin pasar por Traefik.
+#
+# El orquestador NO se publica aqui a proposito: solo esta conectado a las
+# redes `control`/`runtime`, ambas `internal: true`, y Docker no enruta
+# puertos publicados hacia redes internas (el bind se acepta pero nunca
+# queda realmente escuchando). La unica forma de exponerlo seria sacarlo de
+# esas redes internas, y este overlay existe justamente para NO tocar el
+# aislamiento real - si necesitas inspeccionarlo, usa
+# `docker compose exec` o revisa sus logs con `docker compose logs -f
+# orchestrator`.
+#
+# El hardening de los contenedores (cap_drop, read_only, sin socket Docker,
+# sin puertos en app/database, etc.) NO se toca: lo que pruebes aqui debe
+# comportarse igual que en produccion, ese es justamente el punto.
+#
+# En .env, para poder iniciar sesion por HTTP plano sin TLS delante, pon
+# SESSION_COOKIE_SECURE=false mientras uses este overlay (vuelve a `true`
+# antes de desplegar detras de Traefik).
+
+services:
+  dashboard:
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT}:${DASHBOARD_PORT}"
+
+networks:
+  traefik-public:
+    external: false
+    name: ${INSTANCE_ID}_dev_public

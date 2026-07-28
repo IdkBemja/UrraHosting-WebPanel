@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard | UrraHosting{% endblock %}
+{% block head %}<script defer src="{{ url_for('static', filename='app.js') }}"></script>{% endblock %}
+{% block body %}
+<div class="panel-bg"></div>
+<div class="dashboard-shell">
+  <aside class="sidebar">
+    <a class="brand-wrap" href="{{ url_for('dashboard.index') }}"><img class="brand-logo" src="{{ url_for('static', filename='imgs/logo.webp') }}" alt="UrraHosting"><span><strong>UrraHosting</strong><small>App Platform</small></span></a>
+    <nav class="tab-bar" role="tablist" aria-label="Secciones del panel">
+      <button class="tab-btn" role="tab" id="tab-btn-overview" aria-controls="tab-overview" aria-selected="true" data-tab="overview"><i class="bi bi-grid-1x2-fill"></i><span>Resumen</span></button>
+      <button class="tab-btn" role="tab" id="tab-btn-console" aria-controls="tab-console" aria-selected="false" data-tab="console" tabindex="-1"><i class="bi bi-terminal-fill"></i><span>Consola</span></button>
+      <button class="tab-btn" role="tab" id="tab-btn-files" aria-controls="tab-files" aria-selected="false" data-tab="files" tabindex="-1"><i class="bi bi-folder-fill"></i><span>Archivos</span></button>
+      <button class="tab-btn" role="tab" id="tab-btn-repository" aria-controls="tab-repository" aria-selected="false" data-tab="repository" tabindex="-1"><i class="bi bi-git"></i><span>Repositorio</span></button>
+      <button class="tab-btn" role="tab" id="tab-btn-environment" aria-controls="tab-environment" aria-selected="false" data-tab="environment" tabindex="-1"><i class="bi bi-sliders2"></i><span>Entorno</span></button>
+      <button class="tab-btn" role="tab" id="tab-btn-software" aria-controls="tab-software" aria-selected="false" data-tab="software" tabindex="-1"><i class="bi bi-box-seam-fill"></i><span>Software</span></button>
+      <button class="tab-btn" role="tab" id="tab-btn-database" aria-controls="tab-database" aria-selected="false" data-tab="database" tabindex="-1"><i class="bi bi-database-fill"></i><span>Base de datos</span></button>
+      <button class="tab-btn" role="tab" id="tab-btn-activity" aria-controls="tab-activity" aria-selected="false" data-tab="activity" tabindex="-1"><i class="bi bi-clock-history"></i><span>Actividad</span></button>
+      {% if session.get('role') == 'admin' %}<button class="tab-btn" role="tab" id="tab-btn-users" aria-controls="tab-users" aria-selected="false" data-tab="users" tabindex="-1"><i class="bi bi-people-fill"></i><span>Usuarios</span></button>{% endif %}
+    </nav>
+    <div class="sidebar-user"><span class="user-avatar">{{ session.get('username', 'A')[0]|upper }}</span><span><strong>{{ session.get('username') }}</strong><small>{{ 'Administrador' if session.get('role') == 'admin' else 'Operador' }}</small></span><form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-btn" title="Cerrar sesion" aria-label="Cerrar sesion"><i class="bi bi-box-arrow-right"></i></button></form></div>
+  </aside>
+  <div class="dashboard-main">
+    <header class="panel-header"><div><p class="eyebrow">Panel de control</p><h1>Tu aplicacion, bajo control</h1></div><span class="header-status"><i class="bi bi-shield-check"></i> Sesion segura</span></header>
+    <main class="dashboard-grid">
+
+      <section class="tab-panel" id="tab-overview" role="tabpanel" aria-labelledby="tab-btn-overview">
+        <section class="card top-status-card"><div class="control-row"><div class="status-group"><div class="status-line"><span class="label">Estado de la aplicacion</span><span id="statusBadge" class="status-badge offline" aria-live="polite">Desconocido</span></div><div class="meta-line"><i class="bi bi-hdd-rack"></i><span class="label">Contenedor:</span><strong id="containerStatus">-</strong></div><div class="meta-line"><i class="bi bi-heart-pulse"></i><span class="label">Salud:</span><strong id="healthStatus">-</strong></div></div><div class="uptime-group"><i class="bi bi-stopwatch"></i><span class="label">Tiempo encendido</span><strong id="uptimeValue" class="uptime-value">--:--:--</strong></div><div class="action-row"><button class="btn btn-start" data-action="start"><i class="bi bi-play-fill"></i> Iniciar</button><button class="btn btn-restart" data-action="restart"><i class="bi bi-arrow-clockwise"></i> Reiniciar</button><button class="btn btn-stop" data-action="stop"><i class="bi bi-stop-fill"></i> Parar</button></div></div><p id="actionFeedback" class="feedback" aria-live="polite"></p></section>
+        <section class="card"><div class="card-heading"><i class="bi bi-rocket-takeoff-fill"></i><h2>Despliegue actual</h2></div><dl class="detail-grid" id="deploymentDetails"><div class="connection-detail"><dt><i class="bi bi-globe2"></i> Conexion</dt><dd id="ovConnectAddress">-</dd></div><div><dt>SHA desplegado</dt><dd id="ovSha">-</dd></div><div><dt>Perfil</dt><dd id="ovProfile">-</dd></div><div><dt>Origen</dt><dd id="ovSourceKind">-</dd></div><div><dt>Desplegado</dt><dd id="ovDeployedAt">-</dd></div><div><dt>CPU</dt><dd id="ovCpuLimit">-</dd></div><div><dt>RAM</dt><dd id="ovMemLimit">-</dd></div><div><dt>Almacenamiento</dt><dd id="ovStorage">-</dd></div></dl><p id="rollbackWrap" class="is-hidden"><button id="rollbackBtn" class="btn ghost" type="button"><i class="bi bi-arrow-counterclockwise"></i> Revertir a la version anterior</button></p></section>
+        <section class="card"><div class="card-heading"><i class="bi bi-database-fill"></i><h2>Base de datos</h2></div><dl class="detail-grid" id="ovDatabaseDetails"><div><dt>Estado</dt><dd id="ovDbStatus">Sin base de datos</dd></div></dl></section>
+      </section>
+
+      <section class="tab-panel is-hidden" id="tab-console" role="tabpanel" aria-labelledby="tab-btn-console" hidden><section class="card logs-card"><div class="logs-wrap"><div class="logs-toolbar"><div class="card-heading"><i class="bi bi-terminal"></i><h2>Consola (logs)</h2></div><div class="logs-toolbar-actions"><label class="checkbox-label"><input type="checkbox" id="autoscrollToggle" checked> Autoscroll</label><input type="search" id="logsSearch" placeholder="Buscar en la consola..." aria-label="Buscar en la consola"><button id="copyLogs" class="btn ghost" type="button"><i class="bi bi-copy"></i> Copiar</button><button id="clearLogs" class="btn ghost" type="button"><i class="bi bi-eraser"></i> Limpiar</button></div></div><pre id="logsBox" class="logs-box" aria-live="polite"></pre></div></section></section>
+
+      <section class="tab-panel is-hidden" id="tab-files" role="tabpanel" aria-labelledby="tab-btn-files" hidden><section class="card"><div class="files-toolbar"><label for="fileCategory">Categoria</label><select id="fileCategory"><option value="staging">staging (subida manual)</option><option value="source">source (activo, solo lectura)</option></select><span id="filePathBreadcrumb" class="breadcrumb" aria-live="polite">/</span><span id="fileQuota" class="quota-label"></span></div><div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Subir archivo"><i class="bi bi-cloud-arrow-up"></i><p>Arrastra un archivo aqui o <label for="fileInput" class="link-like">elige un archivo</label> (solo en staging)</p><input type="file" id="fileInput" class="sr-only"></div><div id="uploadProgressWrap" class="upload-progress-wrap is-hidden"><progress id="uploadProgress" max="100" value="0"></progress><span id="uploadProgressLabel"></span></div><div class="table-scroll"><table class="file-table" id="fileTable"><caption class="sr-only">Listado de archivos</caption><thead><tr><th>Nombre</th><th>Tamano</th><th>Modificado</th><th>Acciones</th></tr></thead><tbody id="fileTableBody"></tbody></table></div><p id="filesEmptyState" class="empty-state is-hidden">Esta carpeta esta vacia.</p></section></section>
+
+      <section class="tab-panel is-hidden" id="tab-repository" role="tabpanel" aria-labelledby="tab-btn-repository" hidden>
+        <section class="card"><div class="card-heading"><i class="bi bi-git"></i><h2>Repositorio Git</h2></div>
+          <form id="repoForm" class="install-form"><label for="repoUrl">URL (https:// o git@host:ruta)</label><input id="repoUrl" placeholder="https://github.com/usuario/repositorio.git"><label for="repoRef">Rama / tag</label><input id="repoRef" value="main"><button class="btn" type="submit"><i class="bi bi-check2"></i> Guardar</button></form>
+          <p id="repoFeedback" class="feedback" aria-live="polite"></p>
+          <div id="repoSshBlock" class="is-hidden">
+            <h3>Clave de despliegue SSH</h3>
+            <p class="muted small">Repositorios privados por SSH necesitan esta clave publica agregada como "deploy key" (solo lectura) en el repositorio.</p>
+            <button id="genDeployKeyBtn" class="btn ghost" type="button"><i class="bi bi-key-fill"></i> Generar clave de despliegue</button>
+            <pre id="deployPublicKey" class="logs-box compact-log"></pre>
+            <h3>Confirmar huella del host</h3>
+            <button id="scanHostKeyBtn" class="btn ghost" type="button"><i class="bi bi-shield-lock"></i> Consultar huella del host</button>
+            <pre id="hostKeyFingerprints" class="logs-box compact-log"></pre>
+            <button id="trustHostKeyBtn" class="btn is-hidden" type="button"><i class="bi bi-check2-circle"></i> Confirmar y confiar en esta huella</button>
+            <p id="hostKeyStatus" class="feedback"></p>
+          </div>
+        </section>
+        <section class="card"><div class="card-heading"><i class="bi bi-arrow-repeat"></i><h2>Actualizar y desplegar</h2></div>
+          <p>SHA remoto: <strong id="repoRemoteSha">-</strong> &middot; SHA desplegado: <strong id="repoDeployedSha">-</strong></p>
+          <div class="action-row">
+            <button id="repoCheckBtn" class="btn ghost" type="button"><i class="bi bi-search"></i> Buscar actualizaciones</button>
+            <label for="repoDeployProfile" class="sr-only">Perfil</label>
+            <select id="repoDeployProfile"></select>
+            <button id="repoDeployBtn" class="btn" type="button" disabled><i class="bi bi-rocket-takeoff-fill"></i> Actualizar y desplegar</button>
+          </div>
+          <p id="repoDeployFeedback" class="feedback" aria-live="polite"></p>
+          <pre id="repoDeployLog" class="logs-box compact-log is-hidden"></pre>
+        </section>
+        <section class="card"><div class="card-heading"><i class="bi bi-file-earmark-zip-fill"></i><h2>O sube el codigo directamente</h2></div>
+          <p class="muted small">Sube un .zip, .tar o .tar.gz con tu Dockerfile en la raiz. No se admite Docker Compose.</p>
+          <div class="action-row"><input type="file" id="uploadDeployFile" accept=".zip,.tar,.tar.gz,.tgz"><label for="uploadDeployProfile" class="sr-only">Perfil</label><select id="uploadDeployProfile"></select><button id="uploadDeployBtn" class="btn" type="button"><i class="bi bi-upload"></i> Subir y desplegar</button></div>
+          <p id="uploadDeployFeedback" class="feedback" aria-live="polite"></p>
+        </section>
+      </section>
+
+      <section class="tab-panel is-hidden" id="tab-environment" role="tabpanel" aria-labelledby="tab-btn-environment" hidden><section class="card"><div class="card-heading"><i class="bi bi-sliders2"></i><div><h2>Variables de entorno de la aplicacion</h2><p class="muted">Cifradas en reposo. No se permiten variables reservadas por la plataforma (PORT, APP_PORT, DATABASE_URL, DOCKER_*, etc.).</p></div></div><div id="envList" class="users-list"></div><form id="envAddForm" class="user-form env-form"><input id="envName" placeholder="NOMBRE_VARIABLE"><input id="envValue" placeholder="valor" type="password"><button class="btn"><i class="bi bi-plus-lg"></i> Agregar</button></form><div class="action-row"><button id="envSaveBtn" class="btn" type="button"><i class="bi bi-save-fill"></i> Guardar cambios</button></div><p id="envFeedback" class="feedback" aria-live="polite"></p></section></section>
+
+      <section class="tab-panel is-hidden" id="tab-software" role="tabpanel" aria-labelledby="tab-btn-software" hidden><section class="card"><div class="card-heading"><i class="bi bi-boxes"></i><div><h2>Perfiles de software</h2><p class="muted">Cada perfil fija la imagen base permitida, el usuario no-root y el contrato de puerto (APP_PORT).</p></div></div><div id="softwareCards" class="software-grid"></div><pre id="profileExample" class="logs-box compact-log"></pre></section></section>
+
+      <section class="tab-panel is-hidden" id="tab-database" role="tabpanel" aria-labelledby="tab-btn-database" hidden>
+        <section class="card"><div class="card-heading"><i class="bi bi-database-fill"></i><h2>Base de datos administrada</h2></div>
+          <dl class="detail-grid" id="dbDetails"><div><dt>Estado</dt><dd id="dbStatus">Sin base de datos</dd></div></dl>
+          <div id="dbProvisionForm" class="action-row"><label for="dbEngine" class="sr-only">Motor</label><select id="dbEngine"></select><button id="dbProvisionBtn" class="btn" type="button"><i class="bi bi-plus-circle-fill"></i> Aprovisionar</button></div>
+          <div id="dbManageActions" class="action-row is-hidden"><button id="dbRotateBtn" class="btn ghost" type="button"><i class="bi bi-arrow-repeat"></i> Rotar credenciales</button><button id="dbBackupBtn" class="btn ghost" type="button"><i class="bi bi-download"></i> Respaldar ahora</button><button id="dbDeprovisionBtn" class="btn danger" type="button"><i class="bi bi-trash-fill"></i> Eliminar base de datos</button></div>
+          <p id="dbFeedback" class="feedback" aria-live="polite"></p>
+        </section>
+        <section class="card"><h2>Respaldos</h2><div id="backupsList" class="users-list"></div><p id="backupsEmptyState" class="empty-state is-hidden">Sin respaldos todavia.</p></section>
+      </section>
+
+      <section class="tab-panel is-hidden" id="tab-activity" role="tabpanel" aria-labelledby="tab-btn-activity" hidden><section class="card"><h2>Actividad reciente</h2><ul class="activity-list" id="activityList"></ul><p id="activityEmptyState" class="empty-state is-hidden">Sin actividad registrada todavia.</p></section></section>
+
+      {% if session.get('role') == 'admin' %}<section class="tab-panel is-hidden" id="tab-users" role="tabpanel" aria-labelledby="tab-btn-users" hidden><section class="card"><div class="card-heading"><i class="bi bi-people-fill"></i><div><h2>Usuarios del panel</h2><p class="muted">Administra los accesos de esta instancia.</p></div></div><form id="userForm" class="user-form"><input id="newUsername" required minlength="3" placeholder="Usuario"><input id="newPassword" required minlength="10" type="password" placeholder="Contrasena (min. 10)"><select id="newUserRole"><option value="operator">Operador</option><option value="admin">Administrador</option></select><button class="btn"><i class="bi bi-person-plus-fill"></i> Anadir usuario</button></form><p id="userFeedback" class="feedback" aria-live="polite"></p><div id="usersList" class="users-list"></div></section></section>{% endif %}
+    </main>
+    <footer>
+      <div class="footer-content">
+        <p>&copy; {{ current_year }} UrraHosting. Todos los derechos reservados.</p>
+      </div>
+    </footer>
+  </div>
+</div>
+<div id="confirmDialog" class="dialog-overlay is-hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogBody"><div class="dialog-box"><h2 id="confirmDialogTitle">Confirmar accion</h2><p id="confirmDialogBody"></p><div class="dialog-actions"><button id="confirmDialogCancel" class="btn ghost" type="button">Cancelar</button><button id="confirmDialogAccept" class="btn danger" type="button">Confirmar</button></div></div></div>
+{% endblock %}
