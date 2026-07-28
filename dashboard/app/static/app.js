@@ -22,6 +22,21 @@ function setText(id, value) {
   if (el) el.textContent = value === null || value === undefined || value === "" ? "-" : String(value);
 }
 
+function setConnectionAddress(address) {
+  const link = document.getElementById("ovConnectAddress");
+  if (!link) return;
+
+  if (!address) {
+    link.textContent = "-";
+    link.removeAttribute("href");
+    return;
+  }
+
+  const url = `https://${address}`;
+  link.textContent = url;
+  link.href = url;
+}
+
 function formatBytes(bytes) {
   if (bytes === null || bytes === undefined) return "-";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -165,9 +180,7 @@ async function loadOverview() {
   const { ok, data } = await apiFetch("/api/overview");
   if (!ok || !data) return;
 
-  if (data.connection) {
-    setText("ovConnectAddress", `https://${data.connection.address}`);
-  }
+  setConnectionAddress(data.connection?.address);
 
   const current = data.deployment && data.deployment.current;
   setText("ovSha", current ? current.sha : "sin desplegar aun");

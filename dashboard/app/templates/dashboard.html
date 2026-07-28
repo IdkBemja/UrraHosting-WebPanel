@@ -5,7 +5,7 @@
 <div class="panel-bg"></div>
 <div class="dashboard-shell">
   <aside class="sidebar">
-    <a class="brand-wrap" href="{{ url_for('dashboard.index') }}"><img class="brand-logo" src="{{ url_for('static', filename='imgs/logo.webp') }}" alt="UrraHosting"><span><strong>UrraHosting</strong><small>App Platform</small></span></a>
+    <a class="brand-wrap" href="{{ url_for('dashboard.index') }}"><img class="brand-logo" src="{{ url_for('static', filename='imgs/logo.webp') }}" alt="UrraHosting"><span><strong>UrraHosting</strong><small>WebHosting</small></span></a>
     <nav class="tab-bar" role="tablist" aria-label="Secciones del panel">
       <button class="tab-btn" role="tab" id="tab-btn-overview" aria-controls="tab-overview" aria-selected="true" data-tab="overview"><i class="bi bi-grid-1x2-fill"></i><span>Resumen</span></button>
       <button class="tab-btn" role="tab" id="tab-btn-console" aria-controls="tab-console" aria-selected="false" data-tab="console" tabindex="-1"><i class="bi bi-terminal-fill"></i><span>Consola</span></button>
@@ -20,12 +20,21 @@
     <div class="sidebar-user"><span class="user-avatar">{{ session.get('username', 'A')[0]|upper }}</span><span><strong>{{ session.get('username') }}</strong><small>{{ 'Administrador' if session.get('role') == 'admin' else 'Operador' }}</small></span><form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-btn" title="Cerrar sesion" aria-label="Cerrar sesion"><i class="bi bi-box-arrow-right"></i></button></form></div>
   </aside>
   <div class="dashboard-main">
-    <header class="panel-header"><div><p class="eyebrow">Panel de control</p><h1>Tu aplicacion, bajo control</h1></div><span class="header-status"><i class="bi bi-shield-check"></i> Sesion segura</span></header>
+    <header class="panel-header"><div><p class="eyebrow">Panel de control</p><h1>Administración de tu aplicación web</h1></div><span class="header-status"><i class="bi bi-shield-check"></i> Sesión segura</span></header>
     <main class="dashboard-grid">
 
       <section class="tab-panel" id="tab-overview" role="tabpanel" aria-labelledby="tab-btn-overview">
-        <section class="card top-status-card"><div class="control-row"><div class="status-group"><div class="status-line"><span class="label">Estado de la aplicacion</span><span id="statusBadge" class="status-badge offline" aria-live="polite">Desconocido</span></div><div class="meta-line"><i class="bi bi-hdd-rack"></i><span class="label">Contenedor:</span><strong id="containerStatus">-</strong></div><div class="meta-line"><i class="bi bi-heart-pulse"></i><span class="label">Salud:</span><strong id="healthStatus">-</strong></div></div><div class="uptime-group"><i class="bi bi-stopwatch"></i><span class="label">Tiempo encendido</span><strong id="uptimeValue" class="uptime-value">--:--:--</strong></div><div class="action-row"><button class="btn btn-start" data-action="start"><i class="bi bi-play-fill"></i> Iniciar</button><button class="btn btn-restart" data-action="restart"><i class="bi bi-arrow-clockwise"></i> Reiniciar</button><button class="btn btn-stop" data-action="stop"><i class="bi bi-stop-fill"></i> Parar</button></div></div><p id="actionFeedback" class="feedback" aria-live="polite"></p></section>
-        <section class="card"><div class="card-heading"><i class="bi bi-rocket-takeoff-fill"></i><h2>Despliegue actual</h2></div><dl class="detail-grid" id="deploymentDetails"><div class="connection-detail"><dt><i class="bi bi-globe2"></i> Conexion</dt><dd id="ovConnectAddress">-</dd></div><div><dt>SHA desplegado</dt><dd id="ovSha">-</dd></div><div><dt>Perfil</dt><dd id="ovProfile">-</dd></div><div><dt>Origen</dt><dd id="ovSourceKind">-</dd></div><div><dt>Desplegado</dt><dd id="ovDeployedAt">-</dd></div><div><dt>CPU</dt><dd id="ovCpuLimit">-</dd></div><div><dt>RAM</dt><dd id="ovMemLimit">-</dd></div><div><dt>Almacenamiento</dt><dd id="ovStorage">-</dd></div></dl><p id="rollbackWrap" class="is-hidden"><button id="rollbackBtn" class="btn ghost" type="button"><i class="bi bi-arrow-counterclockwise"></i> Revertir a la version anterior</button></p></section>
+        <section class="card top-status-card"><div class="control-row"><div class="status-group"><div class="status-line"><span class="label">Estado de la aplicación</span><span id="statusBadge" class="status-badge offline" aria-live="polite">Desconocido</span></div><div class="meta-line"><i class="bi bi-hdd-rack"></i><span class="label">Contenedor:</span><strong id="containerStatus">-</strong></div><div class="meta-line"><i class="bi bi-heart-pulse"></i><span class="label">Salud:</span><strong id="healthStatus">-</strong></div></div><div class="uptime-group"><i class="bi bi-stopwatch"></i><span class="label">Tiempo encendido</span><strong id="uptimeValue" class="uptime-value">--:--:--</strong></div><div class="action-row"><button class="btn btn-start" data-action="start"><i class="bi bi-play-fill"></i> Iniciar</button><button class="btn btn-restart" data-action="restart"><i class="bi bi-arrow-clockwise"></i> Reiniciar</button><button class="btn btn-stop" data-action="stop"><i class="bi bi-stop-fill"></i> Parar</button></div></div><p id="actionFeedback" class="feedback" aria-live="polite"></p></section>
+        <section class="card">
+          <div class="card-heading">
+            <i class="bi bi-rocket-takeoff-fill"></i><h2>Despliegue actual</h2>
+          </div>
+          <div class="app-url-card">
+            <dt>Conexión</dt>
+            <a id="ovConnectAddress" target="_blank" rel="noopener noreferrer">-</a>
+            <p class="muted small">Para modificar la URL con un dominio personalizado, ve al dashboard del hosting para cambiarlo. <a class="open-dashboard-small" href="https://dashboard.urrahosting.cl"> Haz clic aqui</a></p>
+          </div>
+          <dl class="detail-grid" id="deploymentDetails"><div><dt>SHA desplegado</dt><dd id="ovSha">-</dd></div><div><dt>Perfil</dt><dd id="ovProfile">-</dd></div><div><dt>Origen</dt><dd id="ovSourceKind">-</dd></div><div><dt>Desplegado</dt><dd id="ovDeployedAt">-</dd></div><div><dt>CPU</dt><dd id="ovCpuLimit">-</dd></div><div><dt>RAM</dt><dd id="ovMemLimit">-</dd></div><div><dt>Almacenamiento</dt><dd id="ovStorage">-</dd></div></dl><p id="rollbackWrap" class="is-hidden"><button id="rollbackBtn" class="btn ghost" type="button"><i class="bi bi-arrow-counterclockwise"></i> Revertir a la version anterior</button></p></section>
         <section class="card"><div class="card-heading"><i class="bi bi-database-fill"></i><h2>Base de datos</h2></div><dl class="detail-grid" id="ovDatabaseDetails"><div><dt>Estado</dt><dd id="ovDbStatus">Sin base de datos</dd></div></dl></section>
       </section>
 
@@ -72,9 +81,9 @@
       <section class="tab-panel is-hidden" id="tab-software" role="tabpanel" aria-labelledby="tab-btn-software" hidden><section class="card"><div class="card-heading"><i class="bi bi-boxes"></i><div><h2>Perfiles de software</h2><p class="muted">Cada perfil fija la imagen base permitida, el usuario no-root y el contrato de puerto (APP_PORT).</p></div></div><div id="softwareCards" class="software-grid"></div><pre id="profileExample" class="logs-box compact-log"></pre></section></section>
 
       <section class="tab-panel is-hidden" id="tab-database" role="tabpanel" aria-labelledby="tab-btn-database" hidden>
-        <section class="card"><div class="card-heading"><i class="bi bi-database-fill"></i><h2>Base de datos administrada</h2></div>
+        <section class="card card-db"><div class="card-heading"><i class="bi bi-database-fill"></i><h2>Base de datos administrada</h2></div>
           <dl class="detail-grid" id="dbDetails"><div><dt>Estado</dt><dd id="dbStatus">Sin base de datos</dd></div></dl>
-          <div id="dbProvisionForm" class="action-row"><label for="dbEngine" class="sr-only">Motor</label><select id="dbEngine"></select><button id="dbProvisionBtn" class="btn" type="button"><i class="bi bi-plus-circle-fill"></i> Aprovisionar</button></div>
+          <div id="dbProvisionForm" class="action-row"><label for="dbEngine" class="sr-only">Motor</label><select id="dbEngine"></select><button id="dbProvisionBtn" class="btn" type="button"><i class="bi bi-plus-circle-fill"></i> Crear base de datos</button></div>
           <div id="dbManageActions" class="action-row is-hidden"><button id="dbRotateBtn" class="btn ghost" type="button"><i class="bi bi-arrow-repeat"></i> Rotar credenciales</button><button id="dbBackupBtn" class="btn ghost" type="button"><i class="bi bi-download"></i> Respaldar ahora</button><button id="dbDeprovisionBtn" class="btn danger" type="button"><i class="bi bi-trash-fill"></i> Eliminar base de datos</button></div>
           <p id="dbFeedback" class="feedback" aria-live="polite"></p>
         </section>
