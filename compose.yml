@@ -165,6 +165,12 @@ services:
       - control
       - runtime
     <<: *container-hardening
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -203,6 +209,12 @@ services:
       - /tmp:size=64m,mode=1777
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; port = os.environ['DASHBOARD_PORT']; urllib.request.urlopen('http://127.0.0.1:' + port + '/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     deploy:
       resources:
         limits:

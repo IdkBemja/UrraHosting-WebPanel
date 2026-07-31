@@ -79,6 +79,11 @@ def _client() -> docker.DockerClient:
 
 @app.before_request
 def _check_auth():
+    # /healthz is exempt: it's polled by Docker's own healthcheck (compose.yml,
+    # no way to attach a header to a `CMD` probe) and only ever returns a
+    # static {"ok": true} with no instance state, so there's nothing to protect.
+    if request.path == "/healthz":
+        return None
     provided = request.headers.get("X-Internal-Token", "")
     if not hmac.compare_digest(provided, INTERNAL_TOKEN):
         return jsonify({"error": "No autorizado"}), 401
