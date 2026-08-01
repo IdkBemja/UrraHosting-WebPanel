@@ -21,8 +21,8 @@ services:
     networks:
       - traefik-public
     # Labels are a LIST of "key=value" strings on purpose, not a YAML map -
-    # Docker Compose only interpolates ${VAR} inside string *values*, never
-    # inside map *keys*. With `traefik.http.routers.panel-${INSTANCE_ID}...`
+    # Docker Compose only interpolates variable references inside string
+    # *values*, never inside map *keys*. With `traefik.http.routers.panel-${INSTANCE_ID}...`
     # as a map key, Compose left "panel-${INSTANCE_ID}" completely
     # unexpanded on every real deploy (confirmed against a live Traefik log:
     # `routerName=panel-${INSTANCE_ID}@docker`, literal). Worse than just a
