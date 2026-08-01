@@ -64,6 +64,7 @@ class PlatformConfig:
     public_server_address: str
     traefik_public_network: str
     traefik_web_entrypoint: str
+    traefik_cert_resolver: str
     trusted_proxy_count: int
 
     # Dashboard auth
@@ -200,6 +201,7 @@ def load_from_environ(environ: dict) -> tuple[PlatformConfig | None, ValidationR
         public_server_address=_get(environ, "PUBLIC_SERVER_ADDRESS", "") or "",
         traefik_public_network=_get(environ, "TRAEFIK_PUBLIC_NETWORK", "traefik-public") or "traefik-public",
         traefik_web_entrypoint=_get(environ, "TRAEFIK_WEB_ENTRYPOINT", "websecure") or "websecure",
+        traefik_cert_resolver=_get(environ, "TRAEFIK_CERT_RESOLVER", "letsencrypt") or "letsencrypt",
         trusted_proxy_count=trusted_proxy_count,
         app_user=app_user,
         app_password=app_password,

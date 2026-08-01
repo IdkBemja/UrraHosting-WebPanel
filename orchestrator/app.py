@@ -281,6 +281,10 @@ def activate():
         f"traefik.http.routers.app-{CONFIG.instance_id}.rule": f"Host(`{CONFIG.instance_id}.{CONFIG.public_base_domain}`)",
         f"traefik.http.routers.app-{CONFIG.instance_id}.entrypoints": CONFIG.traefik_web_entrypoint,
         f"traefik.http.routers.app-{CONFIG.instance_id}.tls": "true",
+        # Without an explicit certresolver, tls=true only makes Traefik
+        # terminate TLS with its own default (self-signed) certificate - it
+        # never requests a real one from Let's Encrypt on its own.
+        f"traefik.http.routers.app-{CONFIG.instance_id}.tls.certresolver": CONFIG.traefik_cert_resolver,
         f"traefik.http.routers.app-{CONFIG.instance_id}.service": f"app-{CONFIG.instance_id}",
         f"traefik.http.services.app-{CONFIG.instance_id}.loadbalancer.server.port": str(CONFIG.app_port),
     }
