@@ -20,14 +20,32 @@ services:
   dashboard:
     networks:
       - traefik-public
+    # Labels are a LIST of "key=value" strings on purpose, not a YAML map -
+    # Docker Compose only interpolates ${VAR} inside string *values*, never
+    # inside map *keys*. With `traefik.http.routers.panel-${INSTANCE_ID}...`
+    # as a map key, Compose left "panel-${INSTANCE_ID}" completely
+    # unexpanded on every real deploy (confirmed against a live Traefik log:
+    # `routerName=panel-${INSTANCE_ID}@docker`, literal). Worse than just a
+    # cosmetic router name: the router's `.service` *value* still
+    # interpolated fine to `panel-<real-instance-id>`, but
+    # `traefik.http.services.panel-${INSTANCE_ID}...` as a map *key*
+    # registered the service under the literal, unexpanded name
+    # `panel-${INSTANCE_ID}` instead - so the router pointed at a service
+    # name that was never actually created, and Traefik logged
+    # `service "panel-<real-instance-id>@docker" does not exist` even
+    # though the dashboard container was healthy. Writing the whole
+    # "key=value" pair as one list-item string makes the entire line -
+    # including what looks like the key - interpolate correctly. Also
+    # matters for two concurrent instances: with the map form both would
+    # present the exact same literal label key and collide in Traefik.
     labels:
-      traefik.enable: "true"
-      traefik.docker.network: ${TRAEFIK_PUBLIC_NETWORK}
-      traefik.http.routers.panel-${INSTANCE_ID}.rule: "Host(`panel-${INSTANCE_ID}.${PUBLIC_BASE_DOMAIN}`)"
-      traefik.http.routers.panel-${INSTANCE_ID}.entrypoints: ${TRAEFIK_WEB_ENTRYPOINT}
-      traefik.http.routers.panel-${INSTANCE_ID}.tls: "true"
-      traefik.http.routers.panel-${INSTANCE_ID}.service: panel-${INSTANCE_ID}
-      traefik.http.services.panel-${INSTANCE_ID}.loadbalancer.server.port: "${DASHBOARD_PORT}"
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_PUBLIC_NETWORK}"
+      - "traefik.http.routers.panel-${INSTANCE_ID}.rule=Host(`panel-${INSTANCE_ID}.${PUBLIC_BASE_DOMAIN}`)"
+      - "traefik.http.routers.panel-${INSTANCE_ID}.entrypoints=${TRAEFIK_WEB_ENTRYPOINT}"
+      - "traefik.http.routers.panel-${INSTANCE_ID}.tls=true"
+      - "traefik.http.routers.panel-${INSTANCE_ID}.service=panel-${INSTANCE_ID}"
+      - "traefik.http.services.panel-${INSTANCE_ID}.loadbalancer.server.port=${DASHBOARD_PORT}"
 
 networks:
   traefik-public:
