@@ -165,15 +165,13 @@ class DeploymentService:
         candidate_name = candidate["candidate_name"]
         self._progress.set_stage("health_check")
         try:
-            health = self._orchestrator.await_health(
-                candidate_name, profile.default_health_check_path, _DEFAULT_HEALTH_TIMEOUT_SECONDS
-            )
+            healthy = self._await_candidate_health(candidate_name, profile.default_health_check_path)
         except OrchestratorError as exc:
             self._orchestrator.discard_candidate(candidate_name)
             self._record_failure(sha, profile.id, source_kind, deployed_by, str(exc))
             raise DeploymentError(f"Fallo el chequeo de salud: {exc}") from exc
 
-        if not health.get("healthy"):
+        if not healthy:
             self._orchestrator.discard_candidate(candidate_name)
             error = "El candidato no supero el chequeo de salud a tiempo; se mantiene la version anterior activa"
             self._record_failure(sha, profile.id, source_kind, deployed_by, error)
@@ -203,6 +201,30 @@ class DeploymentService:
         self._manifest.record_success(record)
         self._activity.record("deploy_success", {"sha": sha, "profile": profile.id})
         return record
+
+    def _await_candidate_health(self, candidate_name: str, health_path: str) -> bool:
+        # Polls a single-probe orchestrator endpoint instead of one blocking
+        # call so each attempt can be logged to the progress tracker as it
+        # happens (visible live in the deploy log) instead of the operator
+        # only learning the final pass/fail after the whole wait.
+        start = time.monotonic()
+        deadline = start + _DEFAULT_HEALTH_TIMEOUT_SECONDS
+        attempt = 0
+        while True:
+            attempt += 1
+            probe = self._orchestrator.probe_candidate_health(candidate_name, health_path)
+            healthy = bool(probe.get("healthy"))
+            detail = probe.get("detail", "")
+            elapsed = int(time.monotonic() - start)
+            self._progress.append_log(
+                f"Intento {attempt} ({elapsed}s): {health_path} -> "
+                f"{'saludable' if healthy else 'no saludable'} ({detail})"
+            )
+            if healthy:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(2)
 
     def _record_failure(self, sha: str, profile_id: str, source_kind: str, by: str, error: str) -> None:
         record = DeploymentRecord(

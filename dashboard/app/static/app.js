@@ -718,10 +718,14 @@ document.getElementById("repoCheckBtn")?.addEventListener("click", async () => {
 // stop() function so the caller can always close the connection itself
 // too (e.g. once its own await apiFetch(...) resolves), belt-and-suspenders
 // against a missed/late terminal event.
-function watchDeployProgress(wrapEl, barEl, labelEl, feedbackEl) {
+function watchDeployProgress(wrapEl, barEl, labelEl, feedbackEl, logEl) {
   wrapEl.classList.remove("is-hidden");
   barEl.value = 0;
   labelEl.textContent = "Conectando...";
+  if (logEl) {
+    logEl.textContent = "";
+    logEl.classList.add("is-hidden");
+  }
   const source = new EventSource("/api/deployment/progress/stream");
   source.onmessage = (event) => {
     let state = null;
@@ -735,6 +739,14 @@ function watchDeployProgress(wrapEl, barEl, labelEl, feedbackEl) {
     if (state.active && feedbackEl) {
       feedbackEl.textContent = state.label || "Desplegando...";
       feedbackEl.className = "feedback";
+    }
+    // Per-attempt detail for the current stage (e.g. one line per
+    // health-check probe) - reset by the backend whenever the stage
+    // changes, so this always reflects what's happening right now.
+    if (logEl && state.logs && state.logs.length) {
+      logEl.textContent = state.logs.join("\n");
+      logEl.classList.remove("is-hidden");
+      logEl.scrollTop = logEl.scrollHeight;
     }
     if (!state.active && (state.status === "success" || state.status === "failed")) {
       source.close();
@@ -759,6 +771,7 @@ document.getElementById("repoDeployBtn")?.addEventListener("click", async () => 
     document.getElementById("repoDeployProgress"),
     document.getElementById("repoDeployProgressLabel"),
     feedback,
+    logEl,
   );
   const profile = document.getElementById("repoDeployProfile").value;
   const { ok, data } = await apiFetch("/api/repository/deploy", {
@@ -779,6 +792,7 @@ document.getElementById("repoDeployBtn")?.addEventListener("click", async () => 
 document.getElementById("uploadDeployBtn")?.addEventListener("click", async () => {
   const fileEl = document.getElementById("uploadDeployFile");
   const feedback = document.getElementById("uploadDeployFeedback");
+  const logEl = document.getElementById("uploadDeployLog");
   if (!fileEl.files.length) {
     feedback.textContent = "Selecciona un archivo primero.";
     feedback.className = "feedback error";
@@ -796,6 +810,7 @@ document.getElementById("uploadDeployBtn")?.addEventListener("click", async () =
     document.getElementById("uploadDeployProgress"),
     document.getElementById("uploadDeployProgressLabel"),
     feedback,
+    logEl,
   );
   const response = await fetch("/api/deployment/upload", { method: "POST", headers: authHeaders(), body: formData });
   let data = null;

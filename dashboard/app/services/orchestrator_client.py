@@ -67,11 +67,11 @@ class OrchestratorClient:
             {"image_tag": image_tag, "env": env, "health_path": health_path},
         )
 
-    def await_health(self, candidate_name: str, health_path: str, timeout_seconds: int) -> dict[str, Any]:
+    def probe_candidate_health(self, candidate_name: str, health_path: str) -> dict[str, Any]:
         return self.call(
             "POST",
-            "/candidate/await-health",
-            {"candidate_name": candidate_name, "health_path": health_path, "timeout_seconds": timeout_seconds},
+            "/candidate/probe-health",
+            {"candidate_name": candidate_name, "health_path": health_path},
         )
 
     def discard_candidate(self, candidate_name: str) -> dict[str, Any]:

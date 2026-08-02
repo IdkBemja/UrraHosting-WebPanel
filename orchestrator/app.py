@@ -18,7 +18,6 @@ import hmac
 import os
 import secrets
 import socket
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -234,33 +233,41 @@ def start_candidate():
         client.close()
 
 
-def _probe_health(container_name: str, path: str, timeout: float = 3.0) -> bool:
+def _probe_health(container_name: str, path: str, timeout: float = 3.0) -> tuple[bool, str]:
+    """Returns (healthy, detail) - detail is a short, human-readable reason
+    (HTTP status or connection failure) surfaced to the dashboard so the
+    health-check-wait step can log something more useful than pass/fail
+    per attempt (e.g. "HTTP 500" vs "conexion rechazada" point at very
+    different problems: the app is up but erroring, vs not listening yet)."""
     url = f"http://{container_name}:{CONFIG.app_port}{path}"
     try:
         req = urllib.request.Request(url, method="GET")
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            return 200 <= response.status < 400
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-        return False
+            healthy = 200 <= response.status < 400
+            return healthy, f"HTTP {response.status}"
+    except urllib.error.HTTPError as exc:
+        return False, f"HTTP {exc.code}"
+    except TimeoutError:
+        return False, "tiempo de espera agotado"
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        reason = getattr(exc, "reason", exc)
+        return False, f"sin conexion ({reason})"
 
 
-@app.post("/candidate/await-health")
-def await_health():
+# The dashboard owns the retry loop (dashboard/app/services/deployment.py)
+# instead of this endpoint blocking on it - a single probe per call lets
+# the dashboard log/report each attempt (progress SSE stream) instead of
+# only learning the final pass/fail after the whole wait.
+@app.post("/candidate/probe-health")
+def probe_candidate_health():
     payload = request.get_json(force=True, silent=True) or {}
     candidate_name = str(payload.get("candidate_name", ""))
     health_path = str(payload.get("health_path", "/")) or "/"
-    timeout_seconds = min(int(payload.get("timeout_seconds", 60)), 300)
     if candidate_name != CANDIDATE_CONTAINER_NAME:
         return jsonify({"error": "candidate_name invalido"}), 400
 
-    deadline = time.monotonic() + timeout_seconds
-    healthy = False
-    while time.monotonic() < deadline:
-        if _probe_health(candidate_name, health_path):
-            healthy = True
-            break
-        time.sleep(2)
-    return jsonify({"ok": True, "healthy": healthy})
+    healthy, detail = _probe_health(candidate_name, health_path)
+    return jsonify({"ok": True, "healthy": healthy, "detail": detail})
 
 
 @app.post("/candidate/discard")

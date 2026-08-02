@@ -14,7 +14,7 @@ here needs to survive a restart.
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 
 # (stage_id, label, weight) - weight is the % of the bar that stage
 # contributes once it *starts* (i.e. the bar shows the cumulative weight of
@@ -45,6 +45,9 @@ def _label_for(stage_id: str) -> str:
     return stage_id
 
 
+_MAX_LOG_LINES = 200
+
+
 @dataclass
 class DeployProgress:
     active: bool = False
@@ -53,6 +56,11 @@ class DeployProgress:
     percent: int = 0
     status: str = "idle"  # idle | running | success | failed
     message: str = ""
+    # Detail lines for the current stage only (e.g. one per health-check
+    # attempt) - reset to [] whenever the stage changes, since it's meant to
+    # explain what a single stage is doing right now, not be a full deploy
+    # transcript.
+    logs: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -62,6 +70,7 @@ class DeployProgress:
             "percent": self.percent,
             "status": self.status,
             "message": self.message,
+            "logs": self.logs,
         }
 
 
@@ -89,6 +98,12 @@ class DeployProgressTracker:
                 percent=_cumulative_percent_before(stage_id),
                 status="running",
             )
+            self._version += 1
+
+    def append_log(self, line: str) -> None:
+        with self._lock:
+            logs = (self._state.logs + [line])[-_MAX_LOG_LINES:]
+            self._state = replace(self._state, logs=logs)
             self._version += 1
 
     def finish_success(self) -> None:
