@@ -67,7 +67,7 @@ class DeploymentService:
         deployed_by: str,
         dockerfile_relpath: str = "Dockerfile",
     ) -> DeploymentRecord:
-        self._progress.start()
+        self._progress.start(source_kind)
         try:
             profile = get_profile(profile_id)
             if profile is None:
@@ -145,8 +145,13 @@ class DeploymentService:
 
         if not build_result.get("ok"):
             error = build_result.get("error", "build fallo")
+            log_tail = build_result.get("log_tail", [])
+            if log_tail:
+                self._progress.append_log("--- log de build ---")
+                for line in log_tail:
+                    self._progress.append_log(line)
             self._record_failure(sha, profile.id, source_kind, deployed_by, error)
-            raise DeploymentError(f"El build fallo: {error}", log_tail=build_result.get("log_tail", []))
+            raise DeploymentError(f"El build fallo: {error}", log_tail=log_tail)
 
         image_tag = build_result["image_tag"]
 

@@ -56,6 +56,12 @@ class DeployProgress:
     percent: int = 0
     status: str = "idle"  # idle | running | success | failed
     message: str = ""
+    # "git" | "upload" | "" - which of the two deploy flows this state
+    # belongs to, so ANY connected browser tab (not just the one that
+    # clicked the button) can tell which of the two progress UIs to light
+    # up. Carried forward across set_stage()/finish_*() since a single
+    # deploy only ever has one source kind for its whole lifetime.
+    source_kind: str = ""
     # Detail lines for the current stage only (e.g. one per health-check
     # attempt) - reset to [] whenever the stage changes, since it's meant to
     # explain what a single stage is doing right now, not be a full deploy
@@ -70,6 +76,7 @@ class DeployProgress:
             "percent": self.percent,
             "status": self.status,
             "message": self.message,
+            "source_kind": self.source_kind,
             "logs": self.logs,
         }
 
@@ -84,9 +91,12 @@ class DeployProgressTracker:
         with self._lock:
             return self._state.active
 
-    def start(self) -> None:
+    def start(self, source_kind: str = "") -> None:
         with self._lock:
-            self._state = DeployProgress(active=True, stage="", label="Preparando...", percent=0, status="running")
+            self._state = DeployProgress(
+                active=True, stage="", label="Preparando...", percent=0, status="running",
+                source_kind=source_kind,
+            )
             self._version += 1
 
     def set_stage(self, stage_id: str) -> None:
@@ -97,6 +107,7 @@ class DeployProgressTracker:
                 label=_label_for(stage_id),
                 percent=_cumulative_percent_before(stage_id),
                 status="running",
+                source_kind=self._state.source_kind,
             )
             self._version += 1
 
@@ -108,14 +119,18 @@ class DeployProgressTracker:
 
     def finish_success(self) -> None:
         with self._lock:
-            self._state = DeployProgress(active=False, stage="done", label="Completado", percent=100, status="success")
+            self._state = DeployProgress(
+                active=False, stage="done", label="Completado", percent=100, status="success",
+                source_kind=self._state.source_kind,
+            )
             self._version += 1
 
     def finish_failure(self, message: str = "") -> None:
         with self._lock:
             self._state = DeployProgress(
                 active=False, stage="failed", label="Fallido", percent=self._state.percent,
-                status="failed", message=message[:500],
+                status="failed", message=message[:500], source_kind=self._state.source_kind,
+                logs=self._state.logs,
             )
             self._version += 1
 

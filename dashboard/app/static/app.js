@@ -706,26 +706,25 @@ document.getElementById("repoCheckBtn")?.addEventListener("click", async () => {
   }
   setText("repoRemoteSha", data.remote_sha ? data.remote_sha.slice(0, 12) : "-");
   setText("repoDeployedSha", data.deployed_sha ? data.deployed_sha.slice(0, 12) : "sin desplegar");
-  document.getElementById("repoDeployBtn").disabled = !data.changes_available;
+  const repoDeployBtn = document.getElementById("repoDeployBtn");
+  // Tracked separately from .disabled itself - renderDeployProgress() also
+  // toggles .disabled (while ANY deploy is running) and needs to know what
+  // to restore it to afterwards without re-enabling a deploy with no
+  // pending changes.
+  repoDeployBtn.dataset.changesAvailable = data.changes_available ? "1" : "0";
+  repoDeployBtn.disabled = !data.changes_available;
   feedback.textContent = data.changes_available ? "Hay cambios disponibles para desplegar." : "Ya estas en la ultima version.";
   feedback.classList.add(data.changes_available ? "ok" : "ok");
 });
 
-// Drives the stage/percent UI for a deploy in flight by subscribing to
-// /api/deployment/progress/stream (SSE) - same generate()+EventSource
-// pattern as initLogsStream(), but self-closing once a terminal state
-// (success/failed) is observed instead of streaming forever. Returns a
-// stop() function so the caller can always close the connection itself
-// too (e.g. once its own await apiFetch(...) resolves), belt-and-suspenders
-// against a missed/late terminal event.
-function watchDeployProgress(wrapEl, barEl, labelEl, feedbackEl, logEl) {
-  wrapEl.classList.remove("is-hidden");
-  barEl.value = 0;
-  labelEl.textContent = "Conectando...";
-  if (logEl) {
-    logEl.textContent = "";
-    logEl.classList.add("is-hidden");
-  }
+// Single, page-level, always-on subscription to /api/deployment/progress/
+// stream (SSE) - same generate()+EventSource+auto-reconnect pattern as
+// initLogsStream(). Deliberately NOT scoped to whoever clicked a deploy
+// button: the backend tracker is shared across the whole dashboard process,
+// so any tab connected here sees a deploy in progress (or its result) even
+// if a DIFFERENT logged-in user started it, or if this tab only just
+// reloaded mid-deploy - "estado compartido" is the whole point.
+function connectDeployProgressWatcher() {
   const source = new EventSource("/api/deployment/progress/stream");
   source.onmessage = (event) => {
     let state = null;
@@ -734,65 +733,94 @@ function watchDeployProgress(wrapEl, barEl, labelEl, feedbackEl, logEl) {
     } catch (err) {
       return;
     }
-    barEl.value = state.percent || 0;
-    labelEl.textContent = state.label ? `${state.label} (${state.percent}%)` : `${state.percent || 0}%`;
-    if (state.active && feedbackEl) {
-      feedbackEl.textContent = state.label || "Desplegando...";
-      feedbackEl.className = "feedback";
+    renderDeployProgress(state);
+  };
+  source.onerror = () => {
+    source.close();
+    setTimeout(connectDeployProgressWatcher, 2500);
+  };
+}
+
+const DEPLOY_PROGRESS_TARGETS = {
+  git: "repoDeploy",
+  upload: "uploadDeploy",
+};
+
+function renderDeployProgress(state) {
+  const anyActive = Boolean(state.active);
+  const uploadBtn = document.getElementById("uploadDeployBtn");
+  if (uploadBtn) uploadBtn.disabled = anyActive;
+  const repoBtn = document.getElementById("repoDeployBtn");
+  if (repoBtn) repoBtn.disabled = anyActive || repoBtn.dataset.changesAvailable !== "1";
+
+  for (const [kind, prefix] of Object.entries(DEPLOY_PROGRESS_TARGETS)) {
+    const wrap = document.getElementById(`${prefix}ProgressWrap`);
+    if (!wrap) continue;
+    const isThisKind = state.source_kind === kind;
+    const bar = document.getElementById(`${prefix}Progress`);
+    const label = document.getElementById(`${prefix}ProgressLabel`);
+    const feedback = document.getElementById(`${prefix}Feedback`);
+    const logEl = document.getElementById(`${prefix}Log`);
+
+    if (state.active && isThisKind) {
+      wrap.classList.remove("is-hidden");
+      bar.value = state.percent || 0;
+      label.textContent = state.label ? `${state.label} (${state.percent}%)` : `${state.percent || 0}%`;
+      if (feedback) {
+        feedback.textContent = state.label || "Desplegando...";
+        feedback.className = "feedback";
+      }
+    } else {
+      wrap.classList.add("is-hidden");
     }
+
     // Per-attempt detail for the current stage (e.g. one line per
     // health-check probe) - reset by the backend whenever the stage
     // changes, so this always reflects what's happening right now.
-    if (logEl && state.logs && state.logs.length) {
+    if (isThisKind && logEl && state.logs && state.logs.length) {
       logEl.textContent = state.logs.join("\n");
       logEl.classList.remove("is-hidden");
       logEl.scrollTop = logEl.scrollHeight;
     }
-    if (!state.active && (state.status === "success" || state.status === "failed")) {
-      source.close();
+
+    if (isThisKind && !state.active && (state.status === "success" || state.status === "failed") && feedback) {
+      feedback.textContent = state.status === "success"
+        ? "Despliegue activado correctamente."
+        : state.message || "El despliegue fallo";
+      feedback.className = `feedback ${state.status === "success" ? "ok" : "error"}`;
+      loadOverview();
     }
-  };
-  source.onerror = () => source.close();
-  return () => {
-    source.close();
-    wrapEl.classList.add("is-hidden");
-  };
+  }
 }
+
+connectDeployProgressWatcher();
 
 document.getElementById("repoDeployBtn")?.addEventListener("click", async () => {
   const confirmed = await askConfirm("Actualizar y desplegar", "Se clonara la ultima version, se construira la imagen y se activara solo si pasa el chequeo de salud.");
   if (!confirmed) return;
   const feedback = document.getElementById("repoDeployFeedback");
-  const logEl = document.getElementById("repoDeployLog");
   feedback.textContent = "Iniciando despliegue...";
   feedback.className = "feedback";
-  const stopProgress = watchDeployProgress(
-    document.getElementById("repoDeployProgressWrap"),
-    document.getElementById("repoDeployProgress"),
-    document.getElementById("repoDeployProgressLabel"),
-    feedback,
-    logEl,
-  );
   const profile = document.getElementById("repoDeployProfile").value;
+  // The live progress/result UI is driven entirely by the shared SSE
+  // watcher above (renderDeployProgress) - this only needs to surface
+  // pre-flight errors that happen before a deploy ever starts (e.g. no
+  // repository configured, another deploy already in progress), which
+  // never reach the progress tracker.
   const { ok, data } = await apiFetch("/api/repository/deploy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ profile }),
   });
-  stopProgress();
-  feedback.textContent = ok ? "Despliegue activado correctamente." : (data && data.error) || "El despliegue fallo";
-  feedback.className = `feedback ${ok ? "ok" : "error"}`;
-  if (data && data.log_tail && data.log_tail.length) {
-    logEl.textContent = data.log_tail.join("\n");
-    logEl.classList.remove("is-hidden");
+  if (!ok) {
+    feedback.textContent = (data && data.error) || "El despliegue fallo";
+    feedback.className = "feedback error";
   }
-  loadOverview();
 });
 
 document.getElementById("uploadDeployBtn")?.addEventListener("click", async () => {
   const fileEl = document.getElementById("uploadDeployFile");
   const feedback = document.getElementById("uploadDeployFeedback");
-  const logEl = document.getElementById("uploadDeployLog");
   if (!fileEl.files.length) {
     feedback.textContent = "Selecciona un archivo primero.";
     feedback.className = "feedback error";
@@ -805,13 +833,6 @@ document.getElementById("uploadDeployBtn")?.addEventListener("click", async () =
   formData.append("profile", document.getElementById("uploadDeployProfile").value);
   feedback.textContent = "Subiendo...";
   feedback.className = "feedback";
-  const stopProgress = watchDeployProgress(
-    document.getElementById("uploadDeployProgressWrap"),
-    document.getElementById("uploadDeployProgress"),
-    document.getElementById("uploadDeployProgressLabel"),
-    feedback,
-    logEl,
-  );
   const response = await fetch("/api/deployment/upload", { method: "POST", headers: authHeaders(), body: formData });
   let data = null;
   try {
@@ -819,14 +840,10 @@ document.getElementById("uploadDeployBtn")?.addEventListener("click", async () =
   } catch (err) {
     data = null;
   }
-  stopProgress();
-  feedback.textContent = response.ok ? "Despliegue activado correctamente." : (data && data.error) || "El despliegue fallo";
-  feedback.className = `feedback ${response.ok ? "ok" : "error"}`;
-  if (data && data.log_tail && data.log_tail.length) {
-    logEl.textContent = data.log_tail.join("\n");
-    logEl.classList.remove("is-hidden");
+  if (!response.ok) {
+    feedback.textContent = (data && data.error) || "El despliegue fallo";
+    feedback.className = "feedback error";
   }
-  loadOverview();
 });
 
 
