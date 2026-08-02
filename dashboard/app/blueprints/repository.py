@@ -180,6 +180,9 @@ def deploy_from_repository():
     if config.is_ssh and not config.known_host_confirmed:
         return jsonify({"error": "Confirma la huella del host SSH antes de continuar"}), 400
 
+    if current_app.config["DEPLOY_PROGRESS"].is_active():
+        return jsonify({"error": "Ya hay un despliegue en curso"}), 409
+
     payload = request.get_json(silent=True) or {}
     profile_id = str(payload.get("profile", "python"))
 

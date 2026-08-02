@@ -17,6 +17,7 @@ from config.runtime_profiles import RuntimeProfile, get as get_profile
 
 from . import source_validator
 from .deploy_manifest import DeployManifest, DeploymentRecord
+from .deploy_progress import DeployProgressTracker
 from .dockerfile_validator import validate as validate_dockerfile
 from .env_store import EnvStore
 from .orchestrator_client import OrchestratorClient, OrchestratorError
@@ -41,6 +42,7 @@ class DeploymentService:
         orchestrator: OrchestratorClient,
         activity,
         db_env_provider=lambda: {},
+        progress: DeployProgressTracker | None = None,
     ):
         self._source_dir = Path(source_dir)
         self._state_dir = Path(state_dir)
@@ -53,6 +55,7 @@ class DeploymentService:
         # app.env can never contain these keys (config/reserved_env.py), so
         # there is no collision to resolve here, just a union.
         self._db_env_provider = db_env_provider
+        self._progress = progress or DeployProgressTracker()
 
     def deploy_from_staging(
         self,
@@ -64,38 +67,48 @@ class DeploymentService:
         deployed_by: str,
         dockerfile_relpath: str = "Dockerfile",
     ) -> DeploymentRecord:
-        profile = get_profile(profile_id)
-        if profile is None:
-            raise DeploymentError(f"Perfil desconocido: {profile_id}")
-
+        self._progress.start()
         try:
-            dockerfile_path = source_validator.validate_tree(staging_dir, dockerfile_relpath)
-        except SourceValidationError as exc:
-            shutil.rmtree(staging_dir, ignore_errors=True)
-            raise DeploymentError(str(exc)) from exc
+            profile = get_profile(profile_id)
+            if profile is None:
+                raise DeploymentError(f"Perfil desconocido: {profile_id}")
 
-        dockerfile_text = dockerfile_path.read_text(encoding="utf-8", errors="replace")
-        check = validate_dockerfile(dockerfile_text, profile)
-        if not check.ok:
-            shutil.rmtree(staging_dir, ignore_errors=True)
-            raise DeploymentError("Dockerfile invalido: " + "; ".join(check.errors))
+            self._progress.set_stage("validate")
+            try:
+                dockerfile_path = source_validator.validate_tree(staging_dir, dockerfile_relpath)
+            except SourceValidationError as exc:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                raise DeploymentError(str(exc)) from exc
 
-        self._promote_staging_to_source(staging_dir)
+            dockerfile_text = dockerfile_path.read_text(encoding="utf-8", errors="replace")
+            check = validate_dockerfile(dockerfile_text, profile)
+            if not check.ok:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                raise DeploymentError("Dockerfile invalido: " + "; ".join(check.errors))
 
-        try:
-            app_env = {**self._env_store.load(), **self._db_env_provider()}
-        except Exception as exc:  # noqa: BLE001 - surfaced to the caller, not logged with secret content
-            raise DeploymentError(f"No se pudo leer app.env: {exc}") from exc
+            self._promote_staging_to_source(staging_dir)
 
-        record = self._run_build_and_activate(
-            sha=sha,
-            dockerfile_relpath=dockerfile_relpath,
-            profile=profile,
-            app_env=app_env,
-            source_kind=source_kind,
-            deployed_by=deployed_by,
-        )
-        return record
+            try:
+                app_env = {**self._env_store.load(), **self._db_env_provider()}
+            except Exception as exc:  # noqa: BLE001 - surfaced to the caller, not logged with secret content
+                raise DeploymentError(f"No se pudo leer app.env: {exc}") from exc
+
+            record = self._run_build_and_activate(
+                sha=sha,
+                dockerfile_relpath=dockerfile_relpath,
+                profile=profile,
+                app_env=app_env,
+                source_kind=source_kind,
+                deployed_by=deployed_by,
+            )
+            self._progress.finish_success()
+            return record
+        except DeploymentError as exc:
+            self._progress.finish_failure(str(exc))
+            raise
+        except Exception as exc:  # noqa: BLE001 - unexpected bug: still unstick the progress tracker
+            self._progress.finish_failure(f"Error inesperado: {exc}")
+            raise
 
     def _promote_staging_to_source(self, staging_dir: Path) -> None:
         # source_dir is a bind-mount root (compose.yml: ${DATA_DIR}/source),
@@ -123,6 +136,7 @@ class DeploymentService:
     ) -> DeploymentRecord:
         now = lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
+        self._progress.set_stage("build")
         try:
             build_result = self._orchestrator.build_image(sha, dockerfile_relpath)
         except OrchestratorError as exc:
@@ -136,6 +150,7 @@ class DeploymentService:
 
         image_tag = build_result["image_tag"]
 
+        self._progress.set_stage("candidate_start")
         try:
             candidate = self._orchestrator.start_candidate(image_tag, app_env, profile.default_health_check_path)
         except OrchestratorError as exc:
@@ -148,6 +163,7 @@ class DeploymentService:
             raise DeploymentError(error)
 
         candidate_name = candidate["candidate_name"]
+        self._progress.set_stage("health_check")
         try:
             health = self._orchestrator.await_health(
                 candidate_name, profile.default_health_check_path, _DEFAULT_HEALTH_TIMEOUT_SECONDS
@@ -163,6 +179,7 @@ class DeploymentService:
             self._record_failure(sha, profile.id, source_kind, deployed_by, error)
             raise DeploymentError(error)
 
+        self._progress.set_stage("activate")
         try:
             activation = self._orchestrator.activate(image_tag, app_env)
         except OrchestratorError as exc:

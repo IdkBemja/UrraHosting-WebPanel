@@ -23,6 +23,7 @@ from .extensions import csrf, limiter
 from .services.activity import ActivityLog
 from .services.database import DatabaseService
 from .services.deploy_manifest import DeployManifest
+from .services.deploy_progress import DeployProgressTracker
 from .services.deployment import DeploymentService
 from .services.docker_client import InstanceDockerClient
 from .services.env_store import EnvStore, derive_key
@@ -113,6 +114,9 @@ def create_app() -> Flask:
     database_service = DatabaseService(state_dir / "db.enc", fernet_key, orchestrator, config.allowed_db_engines)
     app.config["DATABASE_SERVICE"] = database_service
 
+    deploy_progress = DeployProgressTracker()
+    app.config["DEPLOY_PROGRESS"] = deploy_progress
+
     app.config["DEPLOYMENT_SERVICE"] = DeploymentService(
         source_dir=source_dir,
         state_dir=state_dir,
@@ -121,6 +125,7 @@ def create_app() -> Flask:
         orchestrator=orchestrator,
         activity=app.config["ACTIVITY"],
         db_env_provider=database_service.connection_env,
+        progress=deploy_progress,
     )
 
     app.register_blueprint(auth_bp)

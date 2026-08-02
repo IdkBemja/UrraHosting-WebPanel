@@ -113,3 +113,9 @@ def profiles():
 def activity():
     activity_log = current_app.config["ACTIVITY"]
     return jsonify({"entries": activity_log.recent(limit=200)})
+
+
+@bp.route("/version")
+@login_required
+def version():
+    return jsonify({"version": "v1.0.0-Beta"})

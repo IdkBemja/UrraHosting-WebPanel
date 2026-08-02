@@ -623,21 +623,64 @@ document.getElementById("repoCheckBtn")?.addEventListener("click", async () => {
   feedback.classList.add(data.changes_available ? "ok" : "ok");
 });
 
+// Drives the stage/percent UI for a deploy in flight by subscribing to
+// /api/deployment/progress/stream (SSE) - same generate()+EventSource
+// pattern as initLogsStream(), but self-closing once a terminal state
+// (success/failed) is observed instead of streaming forever. Returns a
+// stop() function so the caller can always close the connection itself
+// too (e.g. once its own await apiFetch(...) resolves), belt-and-suspenders
+// against a missed/late terminal event.
+function watchDeployProgress(wrapEl, barEl, labelEl, feedbackEl) {
+  wrapEl.classList.remove("is-hidden");
+  barEl.value = 0;
+  labelEl.textContent = "Conectando...";
+  const source = new EventSource("/api/deployment/progress/stream");
+  source.onmessage = (event) => {
+    let state = null;
+    try {
+      state = JSON.parse(event.data);
+    } catch (err) {
+      return;
+    }
+    barEl.value = state.percent || 0;
+    labelEl.textContent = state.label ? `${state.label} (${state.percent}%)` : `${state.percent || 0}%`;
+    if (state.active && feedbackEl) {
+      feedbackEl.textContent = state.label || "Desplegando...";
+      feedbackEl.className = "feedback";
+    }
+    if (!state.active && (state.status === "success" || state.status === "failed")) {
+      source.close();
+    }
+  };
+  source.onerror = () => source.close();
+  return () => {
+    source.close();
+    wrapEl.classList.add("is-hidden");
+  };
+}
+
 document.getElementById("repoDeployBtn")?.addEventListener("click", async () => {
   const confirmed = await askConfirm("Actualizar y desplegar", "Se clonara la ultima version, se construira la imagen y se activara solo si pasa el chequeo de salud.");
   if (!confirmed) return;
   const feedback = document.getElementById("repoDeployFeedback");
   const logEl = document.getElementById("repoDeployLog");
-  feedback.textContent = "Desplegando, esto puede tardar varios minutos...";
+  feedback.textContent = "Iniciando despliegue...";
   feedback.className = "feedback";
+  const stopProgress = watchDeployProgress(
+    document.getElementById("repoDeployProgressWrap"),
+    document.getElementById("repoDeployProgress"),
+    document.getElementById("repoDeployProgressLabel"),
+    feedback,
+  );
   const profile = document.getElementById("repoDeployProfile").value;
   const { ok, data } = await apiFetch("/api/repository/deploy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ profile }),
   });
+  stopProgress();
   feedback.textContent = ok ? "Despliegue activado correctamente." : (data && data.error) || "El despliegue fallo";
-  feedback.classList.add(ok ? "ok" : "error");
+  feedback.className = `feedback ${ok ? "ok" : "error"}`;
   if (data && data.log_tail && data.log_tail.length) {
     logEl.textContent = data.log_tail.join("\n");
     logEl.classList.remove("is-hidden");
@@ -658,8 +701,14 @@ document.getElementById("uploadDeployBtn")?.addEventListener("click", async () =
   const formData = new FormData();
   formData.append("file", fileEl.files[0]);
   formData.append("profile", document.getElementById("uploadDeployProfile").value);
-  feedback.textContent = "Subiendo y desplegando...";
+  feedback.textContent = "Subiendo...";
   feedback.className = "feedback";
+  const stopProgress = watchDeployProgress(
+    document.getElementById("uploadDeployProgressWrap"),
+    document.getElementById("uploadDeployProgress"),
+    document.getElementById("uploadDeployProgressLabel"),
+    feedback,
+  );
   const response = await fetch("/api/deployment/upload", { method: "POST", headers: authHeaders(), body: formData });
   let data = null;
   try {
@@ -667,10 +716,26 @@ document.getElementById("uploadDeployBtn")?.addEventListener("click", async () =
   } catch (err) {
     data = null;
   }
+  stopProgress();
   feedback.textContent = response.ok ? "Despliegue activado correctamente." : (data && data.error) || "El despliegue fallo";
-  feedback.classList.add(response.ok ? "ok" : "error");
+  feedback.className = `feedback ${response.ok ? "ok" : "error"}`;
   loadOverview();
 });
+
+
+/* ---------------------------------------------------------------------- */
+/* Version check                                                          */
+/* ---------------------------------------------------------------------- */
+
+async function loadVersion() {
+  const { ok, data } = await apiFetch("/api/version");
+  if (!ok || !data) return;
+  const versionElement = document.getElementById("version");
+  if (versionElement) {
+    versionElement.textContent = data.version;
+  }
+}
+
 
 /* ---------------------------------------------------------------------- */
 /* Environment                                                             */
@@ -960,6 +1025,7 @@ tabLoaders.users = loadUsers;
 
 fetchStatus();
 loadOverview();
+loadVersion();
 populateProfileSelects();
 setInterval(fetchStatus, 10000);
 setInterval(() => {

@@ -5,7 +5,7 @@
 <div class="panel-bg"></div>
 <div class="dashboard-shell">
   <aside class="sidebar">
-    <a class="brand-wrap" href="{{ url_for('dashboard.index') }}"><img class="brand-logo" src="{{ url_for('static', filename='imgs/logo.webp') }}" alt="UrraHosting"><span><strong>UrraHosting</strong><small>WebHosting</small></span></a>
+    <a class="brand-wrap" href="{{ url_for('dashboard.index') }}"><img class="brand-logo" src="{{ url_for('static', filename='imgs/logo.webp') }}" alt="UrraHosting"><span><strong>UrraHosting</strong><small>WebHosting</small><small id="version"></small></span></a>
     <nav class="tab-bar" role="tablist" aria-label="Secciones del panel">
       <button class="tab-btn" role="tab" id="tab-btn-overview" aria-controls="tab-overview" aria-selected="true" data-tab="overview"><i class="bi bi-grid-1x2-fill"></i><span>Resumen</span></button>
       <button class="tab-btn" role="tab" id="tab-btn-console" aria-controls="tab-console" aria-selected="false" data-tab="console" tabindex="-1"><i class="bi bi-terminal-fill"></i><span>Consola</span></button>
@@ -67,12 +67,14 @@
             <button id="repoDeployBtn" class="btn" type="button" disabled><i class="bi bi-rocket-takeoff-fill"></i> Actualizar y desplegar</button>
           </div>
           <p id="repoDeployFeedback" class="feedback" aria-live="polite"></p>
+          <div id="repoDeployProgressWrap" class="upload-progress-wrap is-hidden"><progress id="repoDeployProgress" max="100" value="0"></progress><span id="repoDeployProgressLabel"></span></div>
           <pre id="repoDeployLog" class="logs-box compact-log is-hidden"></pre>
         </section>
         <section class="card"><div class="card-heading"><i class="bi bi-file-earmark-zip-fill"></i><h2>O sube el codigo directamente</h2></div>
           <p class="muted small">Sube un .zip, .tar o .tar.gz con tu Dockerfile en la raiz. No se admite Docker Compose.</p>
           <div class="action-row"><input type="file" id="uploadDeployFile" accept=".zip,.tar,.tar.gz,.tgz"><label for="uploadDeployProfile" class="sr-only">Perfil</label><select id="uploadDeployProfile"></select><button id="uploadDeployBtn" class="btn" type="button"><i class="bi bi-upload"></i> Subir y desplegar</button></div>
           <p id="uploadDeployFeedback" class="feedback" aria-live="polite"></p>
+          <div id="uploadDeployProgressWrap" class="upload-progress-wrap is-hidden"><progress id="uploadDeployProgress" max="100" value="0"></progress><span id="uploadDeployProgressLabel"></span></div>
         </section>
       </section>
 
