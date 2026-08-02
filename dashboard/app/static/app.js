@@ -822,6 +822,10 @@ document.getElementById("uploadDeployBtn")?.addEventListener("click", async () =
   stopProgress();
   feedback.textContent = response.ok ? "Despliegue activado correctamente." : (data && data.error) || "El despliegue fallo";
   feedback.className = `feedback ${response.ok ? "ok" : "error"}`;
+  if (data && data.log_tail && data.log_tail.length) {
+    logEl.textContent = data.log_tail.join("\n");
+    logEl.classList.remove("is-hidden");
+  }
   loadOverview();
 });
 

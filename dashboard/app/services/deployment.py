@@ -167,15 +167,15 @@ class DeploymentService:
         try:
             healthy = self._await_candidate_health(candidate_name, profile.default_health_check_path)
         except OrchestratorError as exc:
-            self._orchestrator.discard_candidate(candidate_name)
+            log_tail = self._discard_candidate_with_logs(candidate_name)
             self._record_failure(sha, profile.id, source_kind, deployed_by, str(exc))
-            raise DeploymentError(f"Fallo el chequeo de salud: {exc}") from exc
+            raise DeploymentError(f"Fallo el chequeo de salud: {exc}", log_tail=log_tail) from exc
 
         if not healthy:
-            self._orchestrator.discard_candidate(candidate_name)
+            log_tail = self._discard_candidate_with_logs(candidate_name)
             error = "El candidato no supero el chequeo de salud a tiempo; se mantiene la version anterior activa"
             self._record_failure(sha, profile.id, source_kind, deployed_by, error)
-            raise DeploymentError(error)
+            raise DeploymentError(error, log_tail=log_tail)
 
         self._progress.set_stage("activate")
         try:
@@ -225,6 +225,23 @@ class DeploymentService:
             if time.monotonic() >= deadline:
                 return False
             time.sleep(2)
+
+    def _discard_candidate_with_logs(self, candidate_name: str) -> list[str]:
+        # Captures the candidate's own stdout/stderr BEFORE it's removed -
+        # otherwise a crash (e.g. the app's entrypoint failing outright) is
+        # only visible indirectly, as DNS resolution failures once Docker
+        # tears down the dead container's network endpoint, which is
+        # useless for actually diagnosing the crash.
+        try:
+            result = self._orchestrator.discard_candidate(candidate_name)
+        except OrchestratorError:
+            return []
+        log_tail = result.get("log_tail") or []
+        if log_tail:
+            self._progress.append_log("--- logs del contenedor candidato ---")
+            for line in log_tail:
+                self._progress.append_log(line)
+        return log_tail
 
     def _record_failure(self, sha: str, profile_id: str, source_kind: str, by: str, error: str) -> None:
         record = DeploymentRecord(

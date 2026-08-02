@@ -149,6 +149,25 @@ def _ensure_image(client: docker.DockerClient, image: str) -> None:
         client.images.pull(image)
 
 
+def _container_logs(client: docker.DockerClient, name: str, tail: int = 200) -> list[str]:
+    # A candidate that fails health checks is discarded (removed) right
+    # after - without capturing its logs first, the ONLY evidence of why it
+    # never became healthy is gone forever, and the operator is left
+    # guessing from indirect symptoms (e.g. DNS resolution failing once the
+    # dead container's network endpoint is torn down) instead of seeing the
+    # actual crash (e.g. "gunicorn: not found").
+    try:
+        container = client.containers.get(name)
+    except docker.errors.NotFound:
+        return []
+    try:
+        raw = container.logs(tail=tail, stdout=True, stderr=True)
+    except docker.errors.DockerException:
+        return []
+    text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+    return [line for line in text.splitlines() if line.strip()]
+
+
 def _remove_container_if_exists(client: docker.DockerClient, name: str) -> None:
     try:
         container = client.containers.get(name)
@@ -278,8 +297,9 @@ def discard_candidate():
         return jsonify({"error": "candidate_name invalido"}), 400
     client = _client()
     try:
+        log_tail = _container_logs(client, candidate_name)
         _remove_container_if_exists(client, CANDIDATE_CONTAINER_NAME)
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "log_tail": log_tail})
     finally:
         client.close()
 
