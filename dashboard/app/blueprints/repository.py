@@ -140,6 +140,28 @@ def _ssh_paths(app_config) -> tuple[Path | None, Path | None]:
     return None, None
 
 
+@bp.route("/refs", methods=["POST"])
+@login_required
+@limiter.limit("20 per minute")
+def list_refs():
+    state = current_app.config["REPOSITORY_STATE"]
+    config = state.load()
+    if not config.url:
+        return jsonify({"error": "Configura primero la URL del repositorio"}), 400
+    if config.is_ssh and not config.known_host_confirmed:
+        return jsonify({"error": "Confirma la huella del host SSH antes de continuar"}), 400
+
+    key_path, known_hosts_path = _ssh_paths(current_app.config)
+    try:
+        branches, tags = git_repository.list_remote_refs(
+            config.url, private_key_path=key_path, known_hosts_path=known_hosts_path
+        )
+    except GitRepositoryError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({"branches": branches, "tags": tags})
+
+
 @bp.route("/check", methods=["POST"])
 @login_required
 @limiter.limit("20 per minute")

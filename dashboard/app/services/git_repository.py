@@ -166,6 +166,42 @@ def ls_remote_sha(
     return lines[0].split("\t", 1)[0]
 
 
+def list_remote_refs(
+    url: str,
+    *,
+    private_key_path: Path | None = None,
+    known_hosts_path: Path | None = None,
+) -> tuple[list[str], list[str]]:
+    """Returns (branches, tags) available on the remote, for the Repository
+    tab's "Conectar" button - lets the operator pick a ref from a real list
+    instead of typing a branch/tag name by hand and having it silently fail
+    at deploy time if mistyped."""
+    env = _build_env(private_key_path, known_hosts_path)
+    command = ["git", "ls-remote", "--heads", "--tags", url]
+    completed = _run_git(command, env=env)
+
+    branches: list[str] = []
+    tags: dict[str, None] = {}
+    for line in completed.stdout.splitlines():
+        parts = line.strip().split("\t", 1)
+        if len(parts) != 2:
+            continue
+        _sha, ref = parts
+        if ref.startswith("refs/heads/"):
+            branches.append(ref[len("refs/heads/"):])
+        elif ref.startswith("refs/tags/"):
+            name = ref[len("refs/tags/"):]
+            # Annotated tags appear twice (the tag object itself, then a
+            # `^{}` peeled line for the commit it points at) - both map to
+            # the same tag name, dict keys dedupe regardless of which line
+            # arrives first.
+            if name.endswith("^{}"):
+                name = name[: -len("^{}")]
+            tags[name] = None
+
+    return sorted(branches), sorted(tags)
+
+
 def clone_at_ref(
     url: str,
     ref: str,

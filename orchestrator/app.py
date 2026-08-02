@@ -77,6 +77,18 @@ def _client() -> docker.DockerClient:
     return docker.DockerClient(base_url=DOCKER_HOST, timeout=180)
 
 
+def _port_env() -> dict:
+    # The platform's listen/port contract (config/reserved_env.py) reserves
+    # both APP_PORT and PORT so the user can never set either from app.env -
+    # inject both here, pointing at the same value, so apps written against
+    # either convention (APP_PORT is this platform's own docs/examples;
+    # PORT is the far more common one from Heroku-style buildpacks/
+    # frameworks) bind to the port the health check and Traefik's
+    # loadbalancer.server.port actually probe/route to.
+    port = str(CONFIG.app_port)
+    return {"APP_PORT": port, "PORT": port}
+
+
 @app.before_request
 def _check_auth():
     # /healthz is exempt: it's polled by Docker's own healthcheck (compose.yml,
@@ -209,7 +221,7 @@ def start_candidate():
         container = client.containers.create(
             image=image_tag,
             name=CANDIDATE_CONTAINER_NAME,
-            environment={**env, "APP_PORT": str(CONFIG.app_port)},
+            environment={**env, **_port_env()},
             network=RUNTIME_NETWORK,
             labels={"com.urrahosting.instance": CONFIG.instance_id, "com.urrahosting.role": "app-candidate"},
             **_fixed_security_kwargs(CONFIG.app_memory_limit, CONFIG.app_cpu_limit),
@@ -295,7 +307,7 @@ def activate():
         container = client.containers.create(
             image=image_tag,
             name=APP_CONTAINER_NAME,
-            environment={**env, "APP_PORT": str(CONFIG.app_port)},
+            environment={**env, **_port_env()},
             network=RUNTIME_NETWORK,
             labels=labels,
             restart_policy={"Name": "unless-stopped"},

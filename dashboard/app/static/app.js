@@ -552,12 +552,61 @@ async function populateProfileSelects() {
 const repoForm = document.getElementById("repoForm");
 const repoFeedback = document.getElementById("repoFeedback");
 
+// Keeps the current/saved ref selectable even before "Conectar" has ever
+// fetched the real branch/tag list (e.g. right after loading the page) -
+// without this, a freshly loaded custom ref would have nothing to select.
+function ensureRefOption(ref) {
+  const select = document.getElementById("repoRef");
+  if (!select || !ref) return;
+  if (![...select.options].some((option) => option.value === ref)) {
+    const option = document.createElement("option");
+    option.value = ref;
+    option.textContent = ref;
+    select.appendChild(option);
+  }
+  select.value = ref;
+}
+
+function populateBranchSelect(branches, tags, preferredRef) {
+  const select = document.getElementById("repoRef");
+  select.innerHTML = "";
+  if (branches.length) {
+    const group = document.createElement("optgroup");
+    group.label = "Ramas";
+    for (const name of branches) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      group.appendChild(option);
+    }
+    select.appendChild(group);
+  }
+  if (tags.length) {
+    const group = document.createElement("optgroup");
+    group.label = "Tags";
+    for (const name of tags) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      group.appendChild(option);
+    }
+    select.appendChild(group);
+  }
+  if (!select.options.length) {
+    const option = document.createElement("option");
+    option.value = preferredRef || "main";
+    option.textContent = preferredRef || "main";
+    select.appendChild(option);
+  }
+  ensureRefOption(preferredRef);
+}
+
 async function loadRepository() {
   await populateProfileSelects();
   const { ok, data } = await apiFetch("/api/repository");
   if (!ok || !data) return;
   document.getElementById("repoUrl").value = data.url || "";
-  document.getElementById("repoRef").value = data.ref || "main";
+  ensureRefOption(data.ref || "main");
   document.getElementById("repoSshBlock")?.classList.toggle("is-hidden", !data.is_ssh);
   if (data.deploy_public_key) document.getElementById("deployPublicKey").textContent = data.deploy_public_key;
   if (data.known_host_pending_fingerprints?.length) {
@@ -571,7 +620,7 @@ async function loadRepository() {
 repoForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const url = document.getElementById("repoUrl").value.trim();
-  const ref = document.getElementById("repoRef").value.trim();
+  const ref = document.getElementById("repoRef").value;
   const { ok, data } = await apiFetch("/api/repository", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -580,6 +629,45 @@ repoForm?.addEventListener("submit", async (event) => {
   repoFeedback.textContent = ok ? "Repositorio configurado." : (data && data.error) || "No se pudo guardar";
   repoFeedback.className = `feedback ${ok ? "ok" : "error"}`;
   if (ok) loadRepository();
+});
+
+document.getElementById("repoConnectBtn")?.addEventListener("click", async () => {
+  const url = document.getElementById("repoUrl").value.trim();
+  if (!url) {
+    repoFeedback.textContent = "Ingresa una URL primero.";
+    repoFeedback.className = "feedback error";
+    return;
+  }
+  repoFeedback.textContent = "Conectando...";
+  repoFeedback.className = "feedback";
+
+  // Listing refs reads the SAVED repository config (host, SSH key material),
+  // so the URL must be persisted first - reuses the same PUT the "Guardar"
+  // button uses, keeping the currently selected ref if there is one.
+  const currentRef = document.getElementById("repoRef").value || "main";
+  const saved = await apiFetch("/api/repository", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, ref: currentRef }),
+  });
+  if (!saved.ok) {
+    repoFeedback.textContent = (saved.data && saved.data.error) || "No se pudo guardar la URL";
+    repoFeedback.className = "feedback error";
+    return;
+  }
+  await loadRepository();
+
+  const { ok, data } = await apiFetch("/api/repository/refs", { method: "POST" });
+  if (!ok) {
+    repoFeedback.textContent = (data && data.error) || "No se pudieron obtener las ramas del repositorio";
+    repoFeedback.className = "feedback error";
+    return;
+  }
+  const branches = data.branches || [];
+  const tags = data.tags || [];
+  populateBranchSelect(branches, tags, currentRef);
+  repoFeedback.textContent = `Conectado: ${branches.length} rama(s), ${tags.length} tag(s) encontrados.`;
+  repoFeedback.className = "feedback ok";
 });
 
 document.getElementById("genDeployKeyBtn")?.addEventListener("click", async () => {

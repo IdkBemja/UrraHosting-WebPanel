@@ -26,7 +26,9 @@ class RuntimeProfile:
     allowed_base_images: tuple[str, ...]
     # Default HTTP path used for the platform health check unless the
     # profile documents another one; the app must answer 2xx/3xx on
-    # APP_PORT at this path within the deploy health-check window.
+    # APP_PORT (also injected as PORT, same value, for frameworks that
+    # read that convention instead - orchestrator/app.py:_port_env()) at
+    # this path within the deploy health-check window.
     default_health_check_path: str
     example_dockerfile: str
     example_entrypoint: str | None = None
@@ -54,8 +56,9 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY . .
 
-# Read process.env.APP_PORT in server.js and listen on it - the platform
-# assigns and injects this port; it must not be hardcoded.
+# Read process.env.PORT (or process.env.APP_PORT - both are injected with
+# the same value) in server.js and listen on it - the platform assigns this
+# port; it must not be hardcoded.
 USER 10001:10001
 CMD ["node", "server.js"]
 """

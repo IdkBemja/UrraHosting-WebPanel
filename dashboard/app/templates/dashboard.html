@@ -44,7 +44,13 @@
 
       <section class="tab-panel is-hidden" id="tab-repository" role="tabpanel" aria-labelledby="tab-btn-repository" hidden>
         <section class="card"><div class="card-heading"><i class="bi bi-git"></i><h2>Repositorio Git</h2></div>
-          <form id="repoForm" class="install-form"><label for="repoUrl">URL (https:// o git@host:ruta)</label><input id="repoUrl" placeholder="https://github.com/usuario/repositorio.git"><label for="repoRef">Rama / tag</label><input id="repoRef" value="main"><button class="btn" type="submit"><i class="bi bi-check2"></i> Guardar</button></form>
+          <form id="repoForm" class="install-form">
+            <label for="repoUrl">URL (https:// o git@host:ruta)</label>
+            <div class="action-row"><input id="repoUrl" placeholder="https://github.com/usuario/repositorio.git"><button id="repoConnectBtn" class="btn ghost" type="button"><i class="bi bi-plug-fill"></i> Conectar</button></div>
+            <label for="repoRef">Rama / tag</label>
+            <select id="repoRef"><option value="main">main</option></select>
+            <button class="btn" type="submit"><i class="bi bi-check2"></i> Guardar</button>
+          </form>
           <p id="repoFeedback" class="feedback" aria-live="polite"></p>
           <div id="repoSshBlock" class="is-hidden">
             <h3>Clave de despliegue SSH</h3>
